@@ -29,6 +29,7 @@ FROM node:22-bookworm-slim AS runner
 
 LABEL org.opencontainers.image.title="Entra to Jira Customer Sync" \
       org.opencontainers.image.description="Keeps Jira Service Management customer details in sync with Microsoft Entra ID" \
+      org.opencontainers.image.source="https://github.com/dottio123/jira-entra-customer-sync" \
       org.opencontainers.image.licenses="UNLICENSED"
 
 WORKDIR /app
