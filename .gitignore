@@ -1,0 +1,43 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Compiled output
+dist/
+coverage/
+
+# Environment files and secrets (NEVER commit secrets to source control)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+secrets/
+data/
+deployment-secrets/
+branding/
+*.oauth-token.json
+atlassian-oauth.json
+
+# Operating System and Editor files
+.DS_Store
+Thumbs.db
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Report outputs
+reports/
+*.report.json
+*dry-run*.json
+
+# Docker image exports and local backups
+*.tar
+backups/

@@ -1,0 +1,14 @@
+dist
+node_modules
+coverage
+package-lock.json
+*.ejs
+data
+secrets
+reports
+deployment-secrets
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.log

@@ -1,0 +1,173 @@
+<%
+  const tz = settings.schedule_timezone;
+  const jiraReady = oauth.configurationAvailable && oauth.tokenRecordValid && oauth.requiredScopesGranted;
+  const updates = updatesState(settings);
+  const mode = operatingMode(settings.commissioning_status);
+  const isAdmin = principal.role === 'admin';
+  const appliedBy = latestPreview
+    ? (recentRuns || []).find((r) => r.runType === 'LIVE_ROLLOUT' && r.previewRunId === latestPreview.id && r.status === 'COMPLETED')
+    : null;
+
+  let hero;
+  if (settings.paused) {
+    hero = { tone: 'warning', icon: 'pause', title: 'Syncing is paused', text: 'No previews or updates will run until syncing is resumed.' };
+  } else if (activeLock) {
+    hero = { tone: 'info', icon: 'refresh', title: 'A sync is running now', text: 'Run #' + activeLock.runId + ' is in progress. New runs can start when it finishes.', href: '/runs/' + activeLock.runId, action: 'View progress' };
+  } else if (!serviceDeskConfigured) {
+    hero = { tone: 'warning', icon: 'alert', title: 'No Jira service desk is configured', text: 'Set JSM_SERVICE_DESK_IDS in the service configuration and restart the service before running a preview.' };
+  } else if (!latestPreview) {
+    hero = { tone: 'neutral', icon: 'info', title: 'No previews have run yet', text: 'Run a preview to compare your Jira customers with your directory. Previews never change anything.' };
+  } else if (latestPreview.proposedCustomerChanges > 0 && !appliedBy) {
+    hero = {
+      tone: 'info',
+      icon: 'users',
+      title: plural(latestPreview.proposedCustomerChanges, 'customer') + (latestPreview.proposedCustomerChanges === 1 ? ' has' : ' have') + ' updates ready for review',
+      text: plural(latestPreview.proposedFieldChanges, 'detail') + ' differ from your directory, found in the preview on ' + formatDateTime(latestPreview.startedAt, tz) + '.',
+      href: '/runs/' + latestPreview.id,
+      action: 'Review changes',
+    };
+  } else if (appliedBy) {
+    hero = { tone: 'success', icon: 'check-circle', title: 'Latest changes have been applied', text: 'Update run #' + appliedBy.id + ' applied the changes from preview #' + latestPreview.id + '. Run a new preview to confirm everything is in sync.' };
+  } else {
+    hero = { tone: 'success', icon: 'check-circle', title: 'Everything is in sync', text: 'The last preview on ' + formatDateTime(latestPreview.startedAt, tz) + ' found no differences across ' + plural(latestPreview.uniqueCustomers, 'customer') + '.' };
+  }
+%>
+<header class="page-header">
+  <div>
+    <h1>Overview</h1>
+    <p class="lead">Keeps <%= syncedFieldLabels.join(', ').toLowerCase() %> on your Jira customers up to date from your company directory. It only updates existing customers and never removes information.</p>
+  </div>
+  <% if (isAdmin) { %>
+    <div class="page-actions">
+      <form method="post" action="/runs/preview">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="button button-primary" type="submit" <%= activeLock || settings.paused ? 'disabled' : '' %> title="<%= settings.paused ? 'Resume syncing to run a preview.' : activeLock ? 'Wait for the current run to finish.' : 'Reads Jira and the directory. Nothing is changed.' %>">
+          <%- icon('refresh') %><span>Run preview</span>
+        </button>
+      </form>
+    </div>
+  <% } %>
+</header>
+
+<section class="hero tone-<%= hero.tone %>" aria-labelledby="hero-title">
+  <span class="hero-icon"><%- icon(hero.icon) %></span>
+  <div class="hero-body">
+    <h2 id="hero-title"><%= hero.title %></h2>
+    <p><%= hero.text %></p>
+  </div>
+  <% if (hero.href) { %>
+    <a class="button button-primary" href="<%= hero.href %>"><span><%= hero.action %></span><%- icon('arrow-right') %></a>
+  <% } else if (settings.paused && isAdmin) { %>
+    <form method="post" action="/settings/pause">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" name="paused" value="false" />
+      <button class="button button-primary" type="submit"><%- icon('play') %><span>Resume syncing</span></button>
+    </form>
+  <% } %>
+</section>
+
+<section class="stats-grid" aria-label="Current status">
+  <div class="stat tone-<%= jiraReady ? 'success' : 'warning' %>">
+    <span class="stat-label"><img class="vendor-logo-sm" src="/assets/brands/jira.webp" alt="" width="14" height="14" />Jira connection</span>
+    <span class="stat-value text"><%= jiraReady ? 'Connected' : 'Needs attention' %></span>
+    <span class="stat-detail">
+      <% if (jiraReady) { %>Authorized and ready<% } else if (isAdmin) { %><a href="/connections">Connect Jira</a> to continue<% } else { %>An administrator needs to connect Jira<% } %>
+    </span>
+  </div>
+  <div class="stat tone-<%= updates.tone %>">
+    <span class="stat-label"><%- icon('shield') %>Updates to Jira</span>
+    <span class="stat-value text"><%= updates.label %></span>
+    <span class="stat-detail" title="<%= settings.commissioning_status %>">Mode: <%= mode.label %></span>
+  </div>
+  <div class="stat tone-neutral">
+    <span class="stat-label"><%- icon('calendar') %>Schedule</span>
+    <span class="stat-value text" title="<%= settings.schedule_cron %>"><%= describeCron(settings.schedule_cron, settings.schedule_timezone) %></span>
+    <span class="stat-detail"><%= updates.code === 'AUTOMATED' ? 'Applies updates automatically' : 'Previews only — nothing is changed' %></span>
+  </div>
+  <div class="stat tone-neutral">
+    <span class="stat-label"><%- icon('clock') %>Last preview</span>
+    <span class="stat-value text"><%= latestPreview ? formatDateTime(latestPreview.startedAt, tz) : 'Never' %></span>
+    <span class="stat-detail"><%= latestPreview ? plural(latestPreview.uniqueCustomers, 'customer') + ' checked' : 'Run a preview to get started' %></span>
+  </div>
+</section>
+
+<% if (alerts && alerts.length > 0) { %>
+  <section class="card" aria-labelledby="alerts-title">
+    <div class="card-header">
+      <div>
+        <h2 id="alerts-title">Alerts</h2>
+        <p><%= plural(alerts.length, 'alert') %> waiting for acknowledgement</p>
+      </div>
+    </div>
+    <div class="stack-sm">
+      <% for (const a of alerts) { const sev = alertSeverity(a.severity); %>
+        <div class="notice notice-<%= sev.tone %>">
+          <%- icon(sev.tone === 'danger' ? 'x-circle' : sev.tone === 'warning' ? 'alert' : 'info') %>
+          <div class="notice-body">
+            <strong><%= a.title %></strong>
+            <p><%= a.message %></p>
+            <p class="small muted"><%= sev.label %> · <%= formatDateTime(a.createdAt, tz) %><% if (a.runId) { %> · <a href="/runs/<%= a.runId %>">Run #<%= a.runId %></a><% } %></p>
+          </div>
+          <div class="notice-actions">
+            <form method="post" action="/alerts/<%= a.id %>/ack">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button type="submit" class="button button-secondary button-sm">Dismiss</button>
+            </form>
+          </div>
+        </div>
+      <% } %>
+    </div>
+  </section>
+<% } %>
+
+<div class="grid-main-side">
+  <section class="card" aria-labelledby="activity-title">
+    <div class="card-header">
+      <div>
+        <h2 id="activity-title">Recent activity</h2>
+        <p>The latest previews and updates</p>
+      </div>
+      <a href="/runs" class="button button-ghost button-sm"><span>View all</span><%- icon('arrow-right') %></a>
+    </div>
+    <% if (recentRuns && recentRuns.length > 0) { %>
+      <ul class="activity-list">
+        <% for (const r of recentRuns) { const st = runStatus(r.status); const type = runType(r.runType); %>
+          <li class="activity-item">
+            <div class="activity-main">
+              <strong><%= type.label %> #<%= r.id %></strong>
+              <small>
+                <%= formatDateTime(r.startedAt, tz) %> · <%= triggerLabel(r.triggerSource) %>
+                <% if (r.runType === 'PREVIEW' && r.status === 'COMPLETED') { %> · <%= plural(r.proposedCustomerChanges, 'customer') %> with changes<% } %>
+                <% if (r.runType === 'LIVE_ROLLOUT' && r.status === 'COMPLETED') { %> · <%= plural(r.verifiedFieldChanges, 'detail') %> updated<% } %>
+              </small>
+            </div>
+            <div class="activity-side">
+              <%- badge(st.tone, st.label, st.help) %>
+              <% if (isAdmin) { %><a href="/runs/<%= r.id %>" class="button button-ghost button-sm" aria-label="View run #<%= r.id %>">View</a><% } %>
+            </div>
+          </li>
+        <% } %>
+      </ul>
+    <% } else { %>
+      <div class="empty-state">
+        <%- icon('history') %>
+        <h3>No activity yet</h3>
+        <p>Use <strong>Run preview</strong> to see which customer details differ from your directory.</p>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="card" aria-labelledby="how-title">
+    <div class="card-header">
+      <div><h2 id="how-title">How syncing works</h2></div>
+    </div>
+    <ol class="how-list">
+      <li><div><strong>Preview</strong><p>Reads the customers in your Jira service desk and finds each one in your directory by exact email address.</p></div></li>
+      <li><div><strong>Review</strong><p>Shows every difference side by side. Nothing changes in Jira during a preview.</p></div></li>
+      <li><div><strong>Apply</strong><p>After approval, updates only the differing details and confirms each one in Jira. Empty directory values never erase Jira values.</p></div></li>
+    </ol>
+    <div class="card-footer">
+      <span class="small muted">Customers are never added, invited, or deleted.</span>
+    </div>
+  </section>
+</div>

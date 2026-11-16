@@ -1,0 +1,8 @@
+<% const noticeIcon = n.tone === 'danger' ? 'x-circle' : n.tone === 'warning' ? 'alert' : n.tone === 'success' ? 'check-circle' : 'info'; %>
+<div class="notice notice-<%= n.tone %>" role="<%= n.tone === 'danger' || n.tone === 'warning' ? 'alert' : 'status' %>">
+  <%- icon(noticeIcon) %>
+  <div class="notice-body">
+    <strong><%= n.title %></strong>
+    <% if (n.text) { %><p><%= n.text %></p><% } %>
+  </div>
+</div>

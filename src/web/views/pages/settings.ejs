@@ -1,0 +1,214 @@
+<%
+  const modes = ['UNCOMMISSIONED', 'COMMISSIONED_MANUAL_ONLY', 'COMMISSIONED_AUTOMATED'];
+  const domains = settings.approved_email_domains ? settings.approved_email_domains.split(',').filter(Boolean) : [];
+  // After a rejected save, show what was typed rather than the stored values.
+  const alertValues = typeof draft === 'object' && draft ? draft : null;
+  const av = (key, stored) => (alertValues ? (alertValues[key] ?? '') : (stored ?? ''));
+  const ac = (key, stored) => (alertValues ? alertValues[key] === 'true' : Boolean(stored));
+%>
+<header class="page-header">
+  <div>
+    <h1>Settings</h1>
+    <p class="lead">Decide which customers are included, whether changes may be written to Jira, and where alerts are sent.</p>
+  </div>
+</header>
+
+<nav class="subnav" aria-label="Settings sections">
+  <a href="#email-domains">Email domains</a>
+  <a href="#operating-mode">Operating mode</a>
+  <a href="#pause">Pause</a>
+  <a href="#security">Account &amp; security</a>
+  <a href="#notifications">Notifications</a>
+</nav>
+
+<% if (message === 'commissioned') { %>
+  <div class="notice notice-success" role="status"><%- icon('check-circle') %><div class="notice-body"><strong>Operating mode saved.</strong></div></div>
+<% } %>
+<% if (message === 'alerts_saved') { %>
+  <div class="notice notice-success" role="status"><%- icon('check-circle') %><div class="notice-body"><strong>Notification settings saved.</strong></div></div>
+<% } %>
+<% if (message === 'domains_saved') { %>
+  <div class="notice notice-success" role="status"><%- icon('check-circle') %><div class="notice-body"><strong>Approved domains saved.</strong><p>Run a new preview before approving any changes.</p></div></div>
+<% } %>
+
+<section class="card settings-section" id="email-domains" aria-labelledby="domains-title">
+  <div class="card-header">
+    <div>
+      <h2 id="domains-title">Approved email domains</h2>
+      <p>Only customers whose email address ends in one of these domains are synced. Everyone else is left unchanged.</p>
+    </div>
+    <%- badge(domains.length > 0 ? 'success' : 'warning', domains.length > 0 ? plural(domains.length, 'domain') : 'None set') %>
+  </div>
+  <form method="post" action="/settings/domains" class="form-stack">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <div class="field">
+      <label class="field-label" for="approved_email_domains">Domains</label>
+      <textarea id="approved_email_domains" name="approved_email_domains" rows="4" class="input input-mono" aria-describedby="domain-help" spellcheck="false"><%= settings.approved_email_domains.split(',').join('\n') %></textarea>
+      <p id="domain-help" class="field-hint">Enter one domain per line or separate with commas, for example example.org and example.net. Matching ignores capitalization. Subdomains must be listed separately. An empty list blocks previews and writes. Changes require a fresh preview.</p>
+    </div>
+    <div class="form-actions"><button type="submit" class="button button-primary">Save domains</button></div>
+  </form>
+</section>
+
+<div class="grid-2">
+  <section class="card settings-section" id="operating-mode" aria-labelledby="mode-title">
+    <div class="card-header">
+      <div>
+        <h2 id="mode-title">Operating mode</h2>
+        <p>Controls whether this service may change customer details in Jira.</p>
+      </div>
+    </div>
+    <form method="post" action="/settings/commission" class="form-stack">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <fieldset class="option-cards">
+        <legend class="sr-only">Operating mode</legend>
+        <% for (const code of modes) { const m = operatingMode(code); %>
+          <label class="option-card">
+            <input type="radio" name="commissioning_status" value="<%= code %>" <%= settings.commissioning_status === code ? 'checked' : '' %> />
+            <span>
+              <strong><%= m.label %></strong>
+              <small><%= m.help %></small>
+            </span>
+          </label>
+        <% } %>
+      </fieldset>
+      <p class="field-hint">To switch to <strong>Automatic</strong>, first use <strong>Manual approval</strong> and complete at least one successful update. Choosing setup mode also turns off updates and automation.</p>
+
+      <label class="switch" for="writes_enabled">
+        <input type="checkbox" id="writes_enabled" name="writes_enabled" value="true" <%= settings.writes_enabled ? 'checked' : '' %> />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-copy">
+          <strong>Allow updates to Jira</strong>
+          <small>Master switch. When off, nothing can be written to Jira, whatever the mode.</small>
+        </span>
+      </label>
+
+      <div class="notice notice-neutral">
+        <%- icon('calendar') %>
+        <div class="notice-body">
+          <strong><%= describeCron(settings.schedule_cron, settings.schedule_timezone) %></strong>
+          <p>Current schedule. Change it on the <a href="/schedule">Schedule</a> page.</p>
+        </div>
+      </div>
+
+      <div class="form-actions"><button type="submit" class="button button-primary">Save operating mode</button></div>
+    </form>
+  </section>
+
+  <div class="stack">
+    <section class="card settings-section tone-<%= settings.paused ? 'warning' : 'neutral' %>" id="pause" aria-labelledby="pause-title">
+      <div class="card-header">
+        <div>
+          <h2 id="pause-title">Pause syncing</h2>
+          <p>Stops new previews and updates straight away. A request already sent to Jira can’t be recalled.</p>
+        </div>
+        <%- badge(settings.paused ? 'warning' : 'success', settings.paused ? 'Paused' : 'Active') %>
+      </div>
+      <form method="post" action="/settings/pause">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="paused" value="<%= settings.paused ? 'false' : 'true' %>" />
+        <% if (settings.paused) { %>
+          <button class="button button-primary" type="submit"><%- icon('play') %><span>Resume syncing</span></button>
+        <% } else { %>
+          <button class="button button-danger" type="submit"><%- icon('pause') %><span>Pause all syncing</span></button>
+        <% } %>
+      </form>
+    </section>
+
+    <section class="card settings-section" id="security" aria-labelledby="security-title">
+      <div class="card-header">
+        <div><h2 id="security-title">Account &amp; security</h2></div>
+      </div>
+      <div class="card-section">
+        <h3>Password</h3>
+        <p class="small">Changing your password signs out your other sessions.</p>
+        <div class="form-actions"><a href="/password" class="button button-secondary">Change password</a></div>
+      </div>
+      <div class="card-section">
+        <h3>Jira sign-in callback URL</h3>
+        <p class="small">Must exactly match the callback URL in your Atlassian developer console app.</p>
+        <div class="code-box">
+          <code id="callbackUrlValue"><%= callbackUrl %></code>
+          <button type="button" class="button button-secondary button-sm" data-copy="#callbackUrlValue" hidden><%- icon('copy') %><span data-copy-label>Copy</span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="card settings-section" id="notifications" aria-labelledby="alerts-title">
+  <div class="card-header">
+    <div>
+      <h2 id="alerts-title">Notifications</h2>
+      <p>Alerts are always shown on the Overview page. You can also send them elsewhere. Alerts never include customer names, emails, or field values.</p>
+    </div>
+  </div>
+  <form method="post" action="/settings/alerts">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+    <div class="grid-2">
+      <div class="sub-card">
+        <label class="switch" for="webhook_enabled">
+          <input type="checkbox" id="webhook_enabled" name="webhook_enabled" value="true" <%= ac('webhook_enabled', settings.webhook_enabled) ? 'checked' : '' %> data-controls="webhook-fields" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-copy"><strong>Webhook</strong><small>Posts a JSON message to a URL, such as a chat or monitoring tool.</small></span>
+        </label>
+        <div class="form-stack" id="webhook-fields">
+          <div class="field">
+            <label class="field-label" for="webhook_url">Webhook URL</label>
+            <input class="input" type="url" id="webhook_url" name="webhook_url" value="<%= av('webhook_url', settings.webhook_url) %>" placeholder="https://" autocomplete="off" />
+            <span class="field-hint">Must start with https://. Sent when a run finishes, a safety limit is reached, or an error occurs.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-card">
+        <label class="switch" for="smtp_enabled">
+          <input type="checkbox" id="smtp_enabled" name="smtp_enabled" value="true" <%= ac('smtp_enabled', settings.smtp_enabled) ? 'checked' : '' %> data-controls="smtp-fields" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-copy"><strong>Email</strong><small>Sends alerts through your mail server (SMTP).</small></span>
+        </label>
+        <div class="form-stack" id="smtp-fields">
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="smtp_host">Mail server</label>
+              <input class="input" type="text" id="smtp_host" name="smtp_host" value="<%= av('smtp_host', settings.smtp_host) %>" placeholder="smtp.example.com" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="smtp_port">Port</label>
+              <input class="input" type="number" id="smtp_port" name="smtp_port" value="<%= av('smtp_port', settings.smtp_port || 587) %>" inputmode="numeric" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="smtp_from">From address</label>
+            <input class="input" type="email" id="smtp_from" name="smtp_from" value="<%= av('smtp_from', settings.smtp_from) %>" placeholder="alerts@example.com" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="smtp_to">Send alerts to</label>
+            <input class="input" type="text" id="smtp_to" name="smtp_to" value="<%= av('smtp_to', settings.smtp_to) %>" placeholder="admin@example.com" aria-describedby="smtp-to-hint" />
+            <span class="field-hint" id="smtp-to-hint">Separate several addresses with commas.</span>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="smtp_username">User name (optional)</label>
+              <input class="input" type="text" id="smtp_username" name="smtp_username" value="<%= av('smtp_username', settings.smtp_username) %>" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="smtp_password">Password</label>
+              <input class="input" type="password" id="smtp_password" name="smtp_password" value="" autocomplete="new-password" placeholder="<%= settings.smtp_password_set ? 'Saved — leave blank to keep' : '' %>" />
+            </div>
+          </div>
+          <% if (settings.smtp_password_set) { %>
+            <label class="checkbox-row" for="smtp_password_clear">
+              <input type="checkbox" id="smtp_password_clear" name="smtp_password_clear" value="true" />
+              <span>Remove the saved password</span>
+            </label>
+          <% } %>
+          <p class="field-hint">Mail is always encrypted: port 465 uses TLS and other ports use STARTTLS. Only a mail relay on this same machine may be used without encryption. The password is stored encrypted and is never shown again.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions card-footer"><button type="submit" class="button button-primary">Save notifications</button></div>
+  </form>
+</section>

@@ -1,0 +1,27 @@
+<div class="auth-panel">
+  <div class="auth-brand">
+    <% if (logoAvailable) { %><img class="brand-logo brand-logo-lg" src="/branding/logo" alt="" /><% } else { %><%- include('../partials/app-logo') %><% } %>
+    <span class="auth-brand-copy"><strong><%= displayName %></strong><% if (displayName.toLowerCase() !== 'customer sync') { %><small>Customer sync</small><% } %></span>
+  </div>
+  <div class="auth-card">
+    <h1>Sign in</h1>
+    <p>Sign in to review and manage customer syncing.</p>
+    <% if (error) { %><div class="notice notice-danger" role="alert"><%- icon('x-circle') %><div class="notice-body"><p><%= error %></p></div></div><% } %>
+    <form method="post" action="/login" class="form-stack">
+      <input type="hidden" name="_csrf" value="<%= loginCsrf %>" />
+      <div class="field">
+        <label class="field-label" for="username">Username</label>
+        <input class="input" id="username" name="username" type="text" autocomplete="username" maxlength="64" required autofocus />
+      </div>
+      <div class="field">
+        <label class="field-label" for="password">Password</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required />
+      </div>
+      <button class="button button-primary button-block" type="submit">Sign in</button>
+    </form>
+  </div>
+  <p class="auth-footer">
+    <span><%- icon('lock') %> Secure access</span>
+    <button type="button" class="text-button" data-theme-toggle aria-label="Theme: System. Switch to light" title="Theme: System"><%- icon('monitor', 'theme-icon-system') %><%- icon('sun', 'theme-icon-light') %><%- icon('moon', 'theme-icon-dark') %><span data-theme-label>System</span></button>
+  </p>
+</div>

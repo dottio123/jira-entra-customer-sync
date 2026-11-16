@@ -1,0 +1,51 @@
+# Entra to Jira Customer Sync — single-host deployment.
+# Configure in .env (see .env.example), then: docker compose up -d
+#
+# The project name fixes the volume names (jira-entra-customer-sync_sync_data, ...),
+# so backups and restores work regardless of the folder this file lives in.
+name: jira-entra-customer-sync
+
+services:
+  sync-service:
+    build: .
+    image: entra-jsm-customer-sync:latest
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: ${WEB_CONTAINER_PORT:-8080}
+      WEB_DATA_DIR: /app/data
+      WEB_SECRETS_DIR: /app/secrets
+    ports:
+      # <host interface>:<host port>:<container port>. WEB_PORT is accepted as a legacy
+      # host-port setting when WEB_BIND_PORT is not set.
+      - '${WEB_BIND_IP:-0.0.0.0}:${WEB_BIND_PORT:-${WEB_PORT:-8080}}:${WEB_CONTAINER_PORT:-8080}'
+    volumes:
+      - sync_data:/app/data # SQLite database: run history, settings, accounts
+      - sync_secrets:/app/secrets # encryption key and Jira OAuth tokens
+      - sync_reports:/app/reports # CLI reports and backup staging
+      - ./deployment-secrets:/run/secrets:ro # optional *_FILE secrets
+      - ./branding:/app/branding:ro # optional logo (APP_LOGO_FILE)
+    # Hardening: the app writes only to the volumes above and /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Gives an in-flight update time to stop at a safe point before the container is killed.
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
+
+volumes:
+  sync_data:
+  sync_secrets:
+  sync_reports:

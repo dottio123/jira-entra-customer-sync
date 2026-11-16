@@ -1,0 +1,154 @@
+<%
+  const sched = scheduleFormValues(settings.schedule_cron);
+  const updates = updatesState(settings);
+  const mode = operatingMode(settings.commissioning_status);
+  const automationAllowed = settings.commissioning_status === 'COMMISSIONED_AUTOMATED';
+  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const zones = timeZoneOptions();
+%>
+<header class="page-header">
+  <div>
+    <h1>Schedule &amp; safety limits</h1>
+    <p class="lead">Choose when the service runs a preview, and set limits that hold large updates for a person to review.</p>
+  </div>
+  <%- badge(updates.code === 'AUTOMATED' ? 'success' : 'neutral', updates.code === 'AUTOMATED' ? 'Automatic updates on' : 'Scheduled previews only') %>
+</header>
+
+<% if (message === 'saved') { %>
+  <div class="notice notice-success" role="status"><%- icon('check-circle') %><div class="notice-body"><strong>Schedule and safety limits saved.</strong></div></div>
+<% } %>
+<% if (typeof error === 'string' && error) { %>
+  <div class="notice notice-danger" role="alert"><%- icon('x-circle') %><div class="notice-body"><strong>The schedule wasn’t saved</strong><p><%= error %></p></div></div>
+<% } %>
+<% if (activeLock) { %>
+  <div class="notice notice-info" role="status"><%- icon('refresh') %><div class="notice-body"><strong>Run #<%= activeLock.runId %> is in progress</strong><p>Changes saved now apply to the next scheduled run.</p></div></div>
+<% } %>
+
+<div class="grid-main-side">
+  <section class="card" aria-labelledby="schedule-title">
+    <form method="post" action="/schedule" class="form-stack">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <div class="card-header">
+        <div>
+          <h2 id="schedule-title">When to run</h2>
+          <p>The service runs once in each scheduled window.</p>
+        </div>
+      </div>
+
+      <div class="notice notice-neutral" data-schedule-summary>
+        <%- icon('calendar') %>
+        <div class="notice-body"><strong><%= describeCron(settings.schedule_cron, settings.schedule_timezone) %></strong><p>Current saved schedule</p></div>
+      </div>
+      <div class="notice notice-info" data-schedule-pending hidden>
+        <%- icon('info') %>
+        <div class="notice-body"><strong>Unsaved schedule change</strong><p>Select <strong>Save changes</strong> to apply the new schedule.</p></div>
+      </div>
+
+      <div class="field-row" data-schedule-builder data-cron-input="schedule_cron" hidden>
+        <div class="field">
+          <label class="field-label" for="schedule_frequency">How often</label>
+          <select class="input" id="schedule_frequency" data-schedule-frequency>
+            <option value="DAILY" <%= sched.frequency === 'DAILY' ? 'selected' : '' %>>Every day</option>
+            <option value="WEEKDAYS" <%= sched.frequency === 'WEEKDAYS' ? 'selected' : '' %>>Weekdays (Mon–Fri)</option>
+            <option value="WEEKLY" <%= sched.frequency === 'WEEKLY' ? 'selected' : '' %>>Once a week</option>
+            <option value="MONTHLY" <%= sched.frequency === 'MONTHLY' ? 'selected' : '' %>>Once a month</option>
+            <option value="CUSTOM" <%= sched.frequency === 'CUSTOM' ? 'selected' : '' %>>Custom (advanced)</option>
+          </select>
+        </div>
+        <div class="field" data-show-for="WEEKLY">
+          <label class="field-label" for="schedule_weekday">Day</label>
+          <select class="input" id="schedule_weekday" data-schedule-weekday>
+            <% weekdays.forEach((name, i) => { %><option value="<%= i %>" <%= sched.dayOfWeek === i ? 'selected' : '' %>><%= name %></option><% }) %>
+          </select>
+        </div>
+        <div class="field" data-show-for="MONTHLY">
+          <label class="field-label" for="schedule_monthday">Day of month</label>
+          <select class="input" id="schedule_monthday" data-schedule-monthday>
+            <% for (let d = 1; d <= 28; d++) { %><option value="<%= d %>" <%= sched.dayOfMonth === d ? 'selected' : '' %>><%= d %></option><% } %>
+          </select>
+        </div>
+        <div class="field" data-hide-for="CUSTOM">
+          <label class="field-label" for="schedule_time">Time</label>
+          <input class="input" type="time" id="schedule_time" value="<%= sched.time %>" data-schedule-time />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="schedule_timezone">Time zone</label>
+        <input class="input" type="text" id="schedule_timezone" name="schedule_timezone" value="<%= settings.schedule_timezone %>" required list="timezone-options" autocomplete="off" spellcheck="false" aria-describedby="tz-hint" />
+        <% if (zones.length > 0) { %><datalist id="timezone-options"><% for (const z of zones) { %><option value="<%= z %>"></option><% } %></datalist><% } %>
+        <span class="field-hint" id="tz-hint">Start typing a city, for example <code>America/Chicago</code> or <code>Europe/London</code>. Daylight saving time is handled automatically.</span>
+      </div>
+
+      <details class="inline-disclosure" data-schedule-advanced open>
+        <summary>Advanced: cron expression</summary>
+        <div class="field">
+          <label class="field-label" for="schedule_cron">Cron expression</label>
+          <input class="input input-mono" type="text" id="schedule_cron" name="schedule_cron" value="<%= settings.schedule_cron %>" required autocomplete="off" spellcheck="false" aria-describedby="cron-hint" />
+          <span class="field-hint" id="cron-hint">Five fields: minute, hour, day of month, month, day of week. Supported: daily <code>0 2 * * *</code>, weekdays <code>0 2 * * 1-5</code>, weekly <code>0 2 * * 0</code>, monthly <code>0 2 1 * *</code>. Runs more often than once a day aren’t allowed, to protect Jira and directory rate limits.</span>
+        </div>
+      </details>
+
+      <div class="card-section">
+        <div class="card-header">
+          <div>
+            <h2>Safety limits</h2>
+            <p>If an update would be larger than these limits, it is held before anything changes so a person can review it.</p>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="max_customers_threshold">Maximum customers changed</label>
+            <input class="input" type="number" id="max_customers_threshold" name="max_customers_threshold" value="<%= settings.max_customers_threshold %>" min="1" max="<%= maxThreshold %>" required inputmode="numeric" aria-describedby="maxc-hint" />
+            <span class="field-hint" id="maxc-hint">Recommended: 100</span>
+          </div>
+          <div class="field">
+            <label class="field-label" for="max_fields_threshold">Maximum details changed</label>
+            <input class="input" type="number" id="max_fields_threshold" name="max_fields_threshold" value="<%= settings.max_fields_threshold %>" min="1" max="<%= maxThreshold %>" required inputmode="numeric" aria-describedby="maxf-hint" />
+            <span class="field-hint" id="maxf-hint">Total individual values across all customers. Recommended: 400</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <label class="switch" for="automation_enabled">
+          <input type="checkbox" id="automation_enabled" name="automation_enabled" value="true" <%= settings.automation_enabled ? 'checked' : '' %> <%= automationAllowed ? '' : 'disabled' %> />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-copy">
+            <strong>Apply updates automatically on schedule</strong>
+            <small>
+              <% if (automationAllowed) { %>
+                When on, each scheduled run previews the changes and applies them, within the safety limits above. When off, scheduled runs only preview.
+              <% } else { %>
+                Available once the operating mode is set to <strong>Automatic</strong> in <a href="/settings#operating-mode">Settings</a>. Until then, scheduled runs only preview changes.
+              <% } %>
+            </small>
+          </span>
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="button button-primary">Save changes</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="mode-title">
+    <div class="card-header">
+      <div><h2 id="mode-title">Current setup</h2></div>
+    </div>
+    <dl class="kv">
+      <div><dt>Operating mode</dt><dd title="<%= settings.commissioning_status %>"><%= mode.label %></dd></div>
+      <div><dt>Updates to Jira</dt><dd><%= updates.label %></dd></div>
+      <div><dt>Automatic updates</dt><dd><%= settings.automation_enabled ? 'On' : 'Off' %></dd></div>
+      <div><dt>Syncing</dt><dd><%= settings.paused ? 'Paused' : 'Active' %></dd></div>
+      <div><dt>History kept</dt><dd>Customer details 90 days · Run summaries kept · Audit log 365 days</dd></div>
+    </dl>
+    <% if (!automationAllowed) { %>
+      <div class="card-footer">
+        <span class="small muted">Automatic updates stay off until an administrator reviews a manual update and switches the operating mode to Automatic.</span>
+      </div>
+    <% } %>
+  </section>
+</div>

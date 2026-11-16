@@ -1,0 +1,20 @@
+# Keep the build context small and free of secrets and runtime data.
+node_modules
+dist
+coverage
+.git
+.vscode
+.env
+.env.*
+!.env.example
+secrets
+deployment-secrets
+data
+reports
+branding
+backups
+docs
+tests
+*.md
+*.tar
+*.log

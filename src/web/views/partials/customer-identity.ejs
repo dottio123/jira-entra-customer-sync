@@ -1,0 +1,18 @@
+<%
+  const ref = typeof customer.customerRef === 'string' ? customer.customerRef : '';
+  const shortRef = ref.length > 16 ? ref.slice(0, 16) + '…' : ref;
+%>
+<div class="identity">
+  <% if (customer.customerEmail) { %>
+    <strong class="identity-primary"><%= customer.customerEmail %></strong>
+    <% if (customer.displayName) { %><span class="identity-secondary"><%= customer.displayName %></span><% } %>
+  <% } else if (customer.displayName) { %>
+    <strong class="identity-primary"><%= customer.displayName %></strong>
+    <span class="identity-secondary">(Email unavailable)</span>
+  <% } else if (customer.reason === 'EMAIL_UNAVAILABLE') { %>
+    <span class="identity-primary identity-missing">Email unavailable</span>
+  <% } else { %>
+    <span class="identity-primary identity-missing" title="Older runs did not record names. Generate a fresh preview to see them.">Identity not recorded · Run a new preview</span>
+  <% } %>
+  <% if (shortRef) { %><span class="identity-ref" title="Internal customer reference">Ref: <%= shortRef %></span><% } %>
+</div>

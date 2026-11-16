@@ -1,0 +1,106 @@
+<%
+  const jiraReady = oauth.configurationAvailable && oauth.tokenRecordValid && oauth.requiredScopesGranted;
+  const checks = [
+    { ok: oauth.configurationAvailable, title: 'App configuration', okText: 'Atlassian app details are set', badText: 'Atlassian app details are missing from the service configuration' },
+    { ok: oauth.tokenRecordValid, title: 'Sign-in', okText: 'A valid Jira sign-in is saved', badText: 'Not signed in yet. Use Connect Jira below' },
+    { ok: oauth.requiredScopesGranted, title: 'Permissions', okText: 'All required permissions were granted', badText: 'Some required permissions are missing. Connect again and accept all permissions' },
+    { ok: writePermission.allowedByConfig && writePermission.granted, title: 'Update permission', okText: 'Jira customer details can be updated', badText: !writePermission.allowedByConfig ? 'Read-only: updates are turned off in the service configuration (JIRA_WRITE_SCOPE_ALLOWED)' : 'Not granted yet. Choose Reconnect Jira below and accept all permissions' },
+    { ok: !redirectUriMismatch, title: 'Callback URL', okText: 'Matches this service’s address', badText: 'Does not match this service’s address' },
+    { ok: serviceDeskIds.length > 0, title: 'Service desks', okText: 'Syncing customers of service desk ' + serviceDeskIds.join(', '), badText: 'No service desk is configured. Set JSM_SERVICE_DESK_IDS and restart the service' },
+  ];
+%>
+<header class="page-header">
+  <div>
+    <h1>Connections</h1>
+    <p class="lead">The service reads from your company directory and writes to Jira. Both connections must be working for syncing to run.</p>
+  </div>
+</header>
+
+<% if (message === 'connected') { %>
+  <div class="notice notice-success" role="status"><%- icon('check-circle') %><div class="notice-body"><strong>Jira connected.</strong><p>The sign-in was saved and will be renewed automatically.</p></div></div>
+<% } %>
+<% if (message === 'denied') { %>
+  <div class="notice notice-danger" role="alert"><%- icon('x-circle') %><div class="notice-body"><strong>Jira connection was cancelled.</strong><p>Permission was denied or the sign-in window was closed.</p></div></div>
+<% } %>
+<% if (message === 'failed') { %>
+  <div class="notice notice-danger" role="alert"><%- icon('x-circle') %><div class="notice-body"><strong>Jira connection could not be completed.</strong><p>Check the configuration below and try again.</p></div></div>
+<% } %>
+
+<div class="grid-2">
+  <section class="card" aria-labelledby="jira-title">
+    <div class="card-header">
+      <div class="title-row">
+        <span class="connector-icon vendor"><img class="vendor-logo" src="/assets/brands/jira.webp" alt="" width="24" height="24" /></span>
+        <div>
+          <h2 id="jira-title">Jira Service Management</h2>
+          <p>Where customer details are updated</p>
+        </div>
+      </div>
+      <%- badge(jiraReady ? 'success' : 'warning', jiraReady ? 'Authorized' : 'Needs attention') %>
+    </div>
+
+    <ul class="status-list">
+      <% for (const c of checks) { %>
+        <li class="tone-<%= c.ok ? 'success' : 'warning' %>">
+          <%- icon(c.ok ? 'check-circle' : 'alert') %>
+          <div><strong><%= c.title %></strong><small><%= c.ok ? c.okText : c.badText %></small></div>
+        </li>
+      <% } %>
+    </ul>
+
+    <% if (redirectUriMismatch) { %>
+      <div class="notice notice-danger mt-16">
+        <%- icon('alert') %>
+        <div class="notice-body"><strong>Callback URL mismatch</strong><p>The redirect URL in the service configuration doesn’t match this page’s address. Update the configuration before connecting.</p></div>
+      </div>
+    <% } %>
+
+    <div class="card-section stack-sm">
+      <span class="field-label">Callback URL</span>
+      <span class="field-hint">Register this exact address in your Atlassian developer console app.</span>
+      <div class="code-box">
+        <code id="callbackUrlValue"><%= callbackUrl %></code>
+        <button type="button" class="button button-secondary button-sm" data-copy="#callbackUrlValue" hidden><%- icon('copy') %><span data-copy-label>Copy</span></button>
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <%# A link, not a form: browsers block form redirects through Atlassian single sign-on. %>
+      <% if (!oauth.configurationAvailable || redirectUriMismatch) { %>
+        <button class="button button-primary" type="button" disabled>
+          <span><%= jiraReady ? 'Reconnect Jira' : 'Connect Jira' %></span><%- icon('arrow-right') %>
+        </button>
+      <% } else { %>
+        <a class="button button-primary" href="/auth/atlassian/start" target="_blank" rel="noopener">
+          <span><%= jiraReady ? 'Reconnect Jira' : 'Connect Jira' %></span><%- icon('arrow-right') %>
+        </a>
+      <% } %>
+      <span class="button-hint">Opens the Atlassian sign-in page in a new tab. When it finishes, reload this page. The connection is kept across restarts.</span>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="directory-title">
+    <div class="card-header">
+      <div class="title-row">
+        <span class="connector-icon vendor"><img class="vendor-logo" src="/assets/brands/microsoft.webp" alt="" width="24" height="24" /></span>
+        <div>
+          <h2 id="directory-title">Microsoft Entra ID</h2>
+          <p>Your company directory — the source of truth</p>
+        </div>
+      </div>
+      <%- badge(graphConfigured ? 'success' : 'warning', graphConfigured ? 'Configured' : 'Not configured') %>
+    </div>
+    <ul class="status-list">
+      <li class="tone-<%= graphConfigured ? 'success' : 'warning' %>">
+        <%- icon(graphConfigured ? 'check-circle' : 'alert') %>
+        <div>
+          <strong>Directory access</strong>
+          <small><%= graphConfigured ? 'Microsoft Graph credentials are set in the service configuration' : 'Microsoft Graph credentials are missing from the service configuration' %></small>
+        </div>
+      </li>
+    </ul>
+    <div class="card-section">
+      <p class="small">Directory credentials are managed by your server administrator in the deployment settings, not on this page. Run a preview to confirm the directory can be read.</p>
+    </div>
+  </section>
+</div>

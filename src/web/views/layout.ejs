@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title><%= title %> · <%= displayName %></title>
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+    <script src="/assets/theme.js"></script>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body class="<%= principal ? 'app-body' : 'auth-body' %>">
+    <%- include('partials/icons') %>
+    <% if (principal) { %>
+      <% const updates = systemState ? updatesState(systemState) : null; %>
+      <% const navItems = [
+        { page: 'overview', href: '/overview', label: 'Overview', icon: 'overview', show: true },
+        { page: 'runs', href: '/runs', label: 'Sync history', icon: 'history', show: true },
+        { page: 'schedule', href: '/schedule', label: 'Schedule', icon: 'calendar', show: principal.role === 'admin' },
+        { page: 'connections', href: '/connections', label: 'Connections', icon: 'link', show: principal.role === 'admin' },
+        { page: 'settings', href: '/settings', label: 'Settings', icon: 'settings', show: principal.role === 'admin' },
+      ]; %>
+      <a class="skip-link" href="#main-content">Skip to main content</a>
+      <div class="app-shell">
+        <aside class="sidebar">
+          <a class="brand" href="/overview">
+            <% if (logoAvailable) { %><img class="brand-logo" src="/branding/logo" alt="" /><% } else { %><%- include('partials/app-logo') %><% } %>
+            <span class="brand-copy"><strong><%= displayName %></strong><% if (displayName.toLowerCase() !== 'customer sync') { %><small>Customer sync</small><% } %></span>
+          </a>
+          <nav class="nav" aria-label="Main">
+            <ul class="nav-list">
+              <% for (const item of navItems) { if (!item.show) continue; %>
+                <li>
+                  <a class="nav-link<%= page === item.page || (item.page === 'runs' && page === 'run-detail') ? ' active' : '' %>" href="<%= item.href %>"<%- page === item.page ? ' aria-current="page"' : '' %>>
+                    <%- icon(item.icon) %><span><%= item.label %></span>
+                  </a>
+                </li>
+              <% } %>
+            </ul>
+          </nav>
+          <div class="sidebar-bottom">
+            <% if (updates) { %>
+              <a class="sidebar-status tone-<%= updates.tone %>" href="<%= principal.role === 'admin' ? '/settings#operating-mode' : '/overview' %>">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span>
+                  <strong>Updates to Jira: <%= updates.label %></strong>
+                  <small><%= updates.help %></small>
+                </span>
+              </a>
+            <% } %>
+            <div class="sidebar-user">
+              <span class="avatar" aria-hidden="true"><%= principal.username.slice(0, 1).toUpperCase() %></span>
+              <span class="sidebar-user-copy"><strong><%= principal.username %></strong><small><%= roleLabel(principal.role) %></small></span>
+            </div>
+          </div>
+        </aside>
+        <div class="content-shell">
+          <header class="topbar">
+            <span class="topbar-title"><%= title %></span>
+            <div class="topbar-actions">
+              <button class="icon-button" type="button" data-theme-toggle aria-label="Theme: System. Switch to light" title="Theme: System">
+                <%- icon('monitor', 'theme-icon-system') %><%- icon('sun', 'theme-icon-light') %><%- icon('moon', 'theme-icon-dark') %>
+              </button>
+              <form method="post" action="/logout">
+                <input type="hidden" name="_csrf" value="<%= typeof csrfToken === 'string' ? csrfToken : '' %>" />
+                <button class="button button-ghost button-sm" type="submit"><%- icon('logout') %><span>Sign out</span></button>
+              </form>
+            </div>
+          </header>
+          <main id="main-content" class="main-content" tabindex="-1"><% if (typeof notice !== 'undefined' && notice) { %><%- include('partials/notice', { n: notice }) %><% } %><%- include('pages/' + page) %></main>
+        </div>
+      </div>
+    <% } else { %>
+      <main id="main-content" class="auth-main"><% if (typeof notice !== 'undefined' && notice) { %><div class="auth-notice"><%- include('partials/notice', { n: notice }) %></div><% } %><%- include('pages/' + page) %></main>
+    <% } %>
+    <div class="sr-only" aria-live="polite" data-live-region></div>
+  </body>
+</html>

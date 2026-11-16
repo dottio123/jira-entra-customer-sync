@@ -1,0 +1,373 @@
+<%
+  const tz = settings.schedule_timezone;
+  const st = runStatus(run.status);
+  const type = runType(run.runType);
+  const isPreview = run.runType === 'PREVIEW';
+  const isRollout = run.runType === 'LIVE_ROLLOUT';
+  const details = run.details || {};
+  const proposed = Array.isArray(details.proposedChanges) ? details.proposedChanges : [];
+  const skipped = Array.isArray(details.skippedRecords) ? details.skippedRecords : [];
+  const records = Array.isArray(details.records) ? details.records : [];
+  const reasonCounts = {};
+  for (const s of skipped) {
+    reasonCounts[s.reason] = (reasonCounts[s.reason] || 0) + 1;
+  }
+%>
+<header class="page-header">
+  <div>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/runs">Sync history</a><span aria-hidden="true">/</span><span aria-current="page">Run #<%= run.id %></span>
+    </nav>
+    <h1><%= type.label %> #<%= run.id %> <%- badge(st.tone, st.label, st.help) %></h1>
+    <div class="page-meta">
+      <span><%= triggerLabel(run.triggerSource) %></span>
+      <span>Started <%= formatDateTime(run.startedAt, tz) %></span>
+      <span><%= run.completedAt ? 'Took ' + formatDuration(run.startedAt, run.completedAt) : 'Still running' %></span>
+      <% if (isRollout && run.previewRunId) { %><span>Based on <a href="/runs/<%= run.previewRunId %>">preview #<%= run.previewRunId %></a></span><% } %>
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="/runs" class="button button-secondary"><%- icon('arrow-left') %><span>Back to history</span></a>
+  </div>
+</header>
+
+<p class="lead"><%= type.help %></p>
+
+<% if (run.status === 'RUNNING' || run.status === 'PENDING') { %>
+  <div class="notice notice-info" role="status" data-auto-refresh="5">
+    <%- icon('refresh') %>
+    <div class="notice-body">
+      <strong>This run is in progress</strong>
+      <p><%= isRollout ? 'Writing approved changes to Jira and confirming each one.' : 'Reading customers and comparing them with the directory.' %> This page refreshes automatically every few seconds.</p>
+    </div>
+  </div>
+<% } %>
+
+<% if (run.failureReason) { %>
+  <div class="notice notice-danger" role="alert">
+    <%- icon('x-circle') %>
+    <div class="notice-body">
+      <strong><%= run.status === 'INTERRUPTED' ? 'This run was interrupted' : 'This run stopped safely before finishing' %></strong>
+      <p><%= run.status === 'INTERRUPTED' ? 'The service stopped or restarted while this run was active. It was not replayed automatically.' : 'Nothing uncertain was retried.' %> <%= isRollout ? 'Anything already confirmed in Jira is listed below.' : 'A preview never changes anything in Jira.' %></p>
+      <p class="small">Reason: <code><%= run.failureReason %></code></p>
+    </div>
+  </div>
+<% } %>
+
+<section class="stats-grid" aria-label="Run summary">
+  <% if (isRollout) { %>
+  <%# An update does not re-enumerate Jira; the preview it is based on holds those counts. %>
+  <div class="stat">
+    <span class="stat-label"><img class="vendor-logo-sm" src="/assets/brands/jira.webp" alt="" width="14" height="14" />Customers attempted</span>
+    <span class="stat-value"><%= formatNumber(run.appliedCustomerChanges) %></span>
+    <span class="stat-detail">From the approved preview</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label"><%- icon('refresh') %>Details attempted</span>
+    <span class="stat-value"><%= formatNumber(run.appliedFieldChanges) %></span>
+    <span class="stat-detail">Written one at a time</span>
+  </div>
+  <div class="stat tone-<%= run.appliedFieldChanges > run.verifiedFieldChanges ? 'warning' : 'neutral' %>">
+    <span class="stat-label"><%- icon('info') %>Not confirmed</span>
+    <span class="stat-value"><%= formatNumber(Math.max(0, run.appliedFieldChanges - run.verifiedFieldChanges)) %></span>
+    <span class="stat-detail">Rejected or not read back</span>
+  </div>
+  <% } else { %>
+  <div class="stat">
+    <span class="stat-label"><img class="vendor-logo-sm" src="/assets/brands/jira.webp" alt="" width="14" height="14" />Customers checked</span>
+    <span class="stat-value"><%= formatNumber(run.uniqueCustomers) %></span>
+    <span class="stat-detail"><%= formatNumber(run.totalCustomersEnumerated) %> found in Jira</span>
+  </div>
+  <div class="stat tone-success">
+    <span class="stat-label"><img class="vendor-logo-sm" src="/assets/brands/microsoft.webp" alt="" width="14" height="14" />Matched in directory</span>
+    <span class="stat-value"><%= formatNumber(run.matchedEntraCustomers) %></span>
+    <span class="stat-detail">Exact email match</span>
+  </div>
+  <div class="stat tone-<%= run.skippedCustomers > 0 ? 'warning' : 'neutral' %>">
+    <span class="stat-label"><%- icon('info') %>Not included</span>
+    <span class="stat-value"><%= formatNumber(run.skippedCustomers) %></span>
+    <span class="stat-detail"><% if (skipped.length > 0) { %><a href="#not-included">See reasons</a><% } else { %>Skipped customers<% } %></span>
+  </div>
+  <% } %>
+  <% if (isRollout) { %>
+    <div class="stat tone-success">
+      <span class="stat-label"><%- icon('check-circle') %>Details updated</span>
+      <span class="stat-value"><%= formatNumber(run.verifiedFieldChanges) %></span>
+      <span class="stat-detail">Confirmed in Jira after writing</span>
+    </div>
+  <% } else { %>
+    <div class="stat tone-info">
+      <span class="stat-label"><%- icon('refresh') %>Customers with changes</span>
+      <span class="stat-value"><%= formatNumber(run.proposedCustomerChanges) %></span>
+      <span class="stat-detail"><%= plural(run.proposedFieldChanges, 'detail') %> to update</span>
+    </div>
+  <% } %>
+</section>
+
+<% if (isPreview && run.status === 'COMPLETED' && run.previewDigest) { %>
+  <section class="card" aria-labelledby="apply-title">
+    <div class="card-header">
+      <div>
+        <h2 id="apply-title">Approve and apply</h2>
+        <p>Send these changes to Jira. Each one is written in turn and then read back to confirm it.</p>
+      </div>
+    </div>
+    <% if (!(run.proposedCustomerChanges > 0)) { %>
+      <div class="notice notice-success">
+        <%- icon('check-circle') %>
+        <div class="notice-body"><strong>Nothing to apply</strong><p>Every checked customer already matches the directory.</p></div>
+      </div>
+    <% } else if (settings.commissioning_status === 'UNCOMMISSIONED') { %>
+      <div class="notice notice-neutral">
+        <%- icon('lock') %>
+        <div class="notice-body">
+          <strong>Updates can’t be applied yet</strong>
+          <p>The service is in setup mode, which allows previews only. An administrator can change the operating mode in <a href="/settings#operating-mode">Settings</a> after reviewing this preview.</p>
+        </div>
+      </div>
+    <% } else if (!settings.writes_enabled) { %>
+      <div class="notice notice-neutral">
+        <%- icon('lock') %>
+        <div class="notice-body">
+          <strong>Updates to Jira are turned off</strong>
+          <p>Turn on <strong>Allow updates to Jira</strong> in <a href="/settings#operating-mode">Settings</a> to apply these changes.</p>
+        </div>
+      </div>
+    <% } else if (!writePermission.allowedByConfig || !writePermission.granted) { %>
+      <div class="notice notice-warning">
+        <%- icon('lock') %>
+        <div class="notice-body">
+          <strong>Jira has not granted permission to update customer details</strong>
+          <% if (!writePermission.allowedByConfig) { %>
+            <p>The service configuration keeps Jira read-only. Ask your server administrator to set <code>JIRA_WRITE_SCOPE_ALLOWED=true</code> and restart the service, then reconnect Jira under <a href="/connections">Connections</a>.</p>
+          <% } else { %>
+            <p>Open <a href="/connections">Connections</a>, choose <strong>Reconnect Jira</strong>, and accept all permissions. Then return here to apply these changes.</p>
+          <% } %>
+        </div>
+      </div>
+    <% } else { %>
+      <% if (settings.paused) { %>
+        <div class="notice notice-warning">
+          <%- icon('pause') %>
+          <div class="notice-body"><strong>Syncing is paused</strong><p>Resume syncing before applying changes.</p></div>
+        </div>
+      <% } %>
+      <form method="post" action="/runs/approve" class="form-stack">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="previewRunId" value="<%= run.id %>" />
+        <ol class="steps">
+          <li class="step">
+            <span class="step-number" aria-hidden="true">1</span>
+            <div class="step-body">
+              <strong>Review the changes</strong>
+              <p><%= plural(run.proposedFieldChanges, 'detail') %> for <%= plural(run.proposedCustomerChanges, 'customer') %> are listed under <a href="#proposed-changes">Proposed changes</a>. Values are never cleared, and changes stop if Jira or the directory changed since this preview.</p>
+              <label class="checkbox-row" for="reviewConfirmed">
+                <input type="checkbox" id="reviewConfirmed" required />
+                <span>I have reviewed these changes</span>
+              </label>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-number" aria-hidden="true">2</span>
+            <div class="step-body field">
+              <label class="field-label" for="approvalDigest">Approval code</label>
+              <p class="field-hint" id="approvalDigest-hint">This 64-character code identifies exactly this preview. It’s filled in for you; the update is refused if it doesn’t match.</p>
+              <input
+                class="input input-mono"
+                type="text"
+                id="approvalDigest"
+                name="approvalDigest"
+                value="<%= run.previewDigest %>"
+                required
+                pattern="^[a-f0-9]{64}$"
+                title="Must be exactly 64 hexadecimal characters"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="approvalDigest-hint"
+              />
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-number" aria-hidden="true">3</span>
+            <div class="step-body">
+              <strong>Apply to Jira</strong>
+              <p>You can follow progress on the next page. Use <strong>Pause syncing</strong> on Sync history to stop further changes.</p>
+              <div class="form-actions">
+                <button type="submit" class="button button-primary" <%= settings.paused ? 'disabled' : '' %>>
+                  <%- icon('check') %><span>Apply <%= plural(run.proposedFieldChanges, 'change') %></span>
+                </button>
+              </div>
+            </div>
+          </li>
+        </ol>
+      </form>
+    <% } %>
+  </section>
+<% } %>
+
+<% if (isRollout && records.length > 0) { %>
+  <section class="card card-flush" aria-labelledby="applied-title">
+    <div class="card-header">
+      <div>
+        <h2 id="applied-title">Applied updates</h2>
+        <p><%= plural(records.length, 'customer') %> · <%= plural(run.verifiedFieldChanges, 'detail') %> confirmed in Jira</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table stack-table">
+        <thead>
+          <tr>
+            <th scope="col">Customer</th>
+            <th scope="col">Result</th>
+            <th scope="col">Details written</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const rec of records) { const recResult = writeResult(String(rec.status || 'NOT_ATTEMPTED')); %>
+            <tr>
+              <td data-label="Customer"><%- include('../partials/customer-identity', { customer: rec }) %></td>
+              <td data-label="Result"><%- badge(recResult.tone, recResult.label, recResult.help) %></td>
+              <td data-label="Details written">
+                <% if (rec.appliedFields && rec.appliedFields.length > 0) { %>
+                  <ul class="field-list">
+                    <% for (const af of rec.appliedFields) { %>
+                      <li>
+                        <span title="<%= af.fieldName %>"><%= fieldLabel(af.fieldName) %>:</span>
+                        <strong><%= af.attemptedValue %></strong>
+                        <% const fieldResult = writeResult(String(af.status || 'SKIPPED')); %><%- badge(fieldResult.tone, fieldResult.label, fieldResult.help) %>
+                        <% if (af.errorMessage) { %><span class="error-text"><%= af.errorMessage %></span><% } %>
+                      </li>
+                    <% } %>
+                  </ul>
+                <% } else { %>
+                  <span class="muted">None</span>
+                <% } %>
+              </td>
+              <td data-label="Notes">
+                <% if (rec.failureReason) { %><span class="error-text"><%= rec.failureReason %></span><% } else { %><span class="muted small">All details confirmed</span><% } %>
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
+
+<% if (proposed.length > 0) { %>
+  <section class="card card-flush" id="proposed-changes" aria-labelledby="proposed-title">
+    <div class="card-header">
+      <div>
+        <h2 id="proposed-title">Proposed changes</h2>
+        <p><%= plural(proposed.length, 'customer') %> · <%= plural(run.proposedFieldChanges, 'detail') %> differ from the directory</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table diff-table">
+        <thead>
+          <tr>
+            <th scope="col">Customer</th>
+            <th scope="col">Detail</th>
+            <th scope="col"><img class="vendor-logo-sm" src="/assets/brands/jira.webp" alt="" width="14" height="14" />Now in Jira</th>
+            <th scope="col"><img class="vendor-logo-sm" src="/assets/brands/microsoft.webp" alt="" width="14" height="14" />New value from directory</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const change of proposed) { %>
+            <% for (let i = 0; i < change.changedFields.length; i++) { %>
+              <% const f = change.changedFields[i]; %>
+              <tr>
+                <% if (i === 0) { %>
+                  <td rowspan="<%= change.changedFields.length %>" class="group-start"><%- include('../partials/customer-identity', { customer: change }) %></td>
+                <% } %>
+                <td class="<%= i === 0 ? 'group-start' : '' %>"><span title="<%= f.fieldName %>"><%= fieldLabel(f.fieldName) %></span></td>
+                <td class="<%= i === 0 ? 'group-start' : '' %>"><span class="muted"><%= f.oldValue == null || f.oldValue === '' ? '(empty)' : f.oldValue %></span></td>
+                <td class="diff-new<%= i === 0 ? ' group-start' : '' %>"><strong><%= f.newValue == null || f.newValue === '' ? 'Unavailable — generate a fresh preview' : f.newValue %></strong></td>
+              </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } else if (run.status === 'COMPLETED' && isPreview) { %>
+  <section class="card" id="proposed-changes">
+    <div class="empty-state">
+      <%- icon('check-circle') %>
+      <h2>No changes needed</h2>
+      <p>Every matched customer’s details already agree with the directory.</p>
+    </div>
+  </section>
+<% } %>
+
+<% if (skipped.length > 0) { %>
+  <section class="card card-flush" id="not-included" aria-labelledby="skipped-title">
+    <div class="card-header">
+      <div>
+        <h2 id="skipped-title">Customers not included</h2>
+        <p><%= plural(skipped.length, 'customer') %> were left unchanged. This is expected for customers outside your organization.</p>
+        <div class="tag-list">
+          <% for (const [code, count] of Object.entries(reasonCounts)) { const r = skipReason(code); %>
+            <span class="chip" title="<%= code %>"><%= r.label %> <strong><%= count %></strong></span>
+          <% } %>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table stack-table">
+        <thead>
+          <tr>
+            <th scope="col">Customer</th>
+            <th scope="col">Reason</th>
+            <th scope="col">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const s of skipped) { const r = skipReason(s.reason); %>
+            <tr>
+              <td data-label="Customer"><%- include('../partials/customer-identity', { customer: s }) %></td>
+              <td data-label="Reason">
+                <%- badge(r.tone, r.label, r.help + ' (' + s.reason + ')') %>
+              </td>
+              <td data-label="Details"><%= s.description || r.help %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
+
+<details class="disclosure">
+  <summary><%- icon('info') %><span>Technical details</span> <small>For administrators and troubleshooting</small></summary>
+  <div class="disclosure-body stack">
+    <dl class="kv-grid">
+      <div><dt>Run type</dt><dd><code><%= run.runType %></code></dd></div>
+      <div><dt>Status code</dt><dd><code><%= run.status %></code></dd></div>
+      <div><dt>Trigger</dt><dd><code><%= run.triggerSource %></code></dd></div>
+      <div><dt>Service desks</dt><dd><%= (run.scopeServiceDeskIds || []).join(', ') || '—' %></dd></div>
+      <div><dt>Started</dt><dd><%= formatDateTime(run.startedAt, tz) %></dd></div>
+      <div><dt>Finished</dt><dd><%= run.completedAt ? formatDateTime(run.completedAt, tz) : 'In progress' %></dd></div>
+      <div><dt>Details confirmed in Jira</dt><dd><%= formatNumber(run.verifiedFieldChanges) %></dd></div>
+      <% if (details.approvedEmailDomains) { %><div><dt>Approved email domains</dt><dd><%= details.approvedEmailDomains.join(', ') %></dd></div><% } %>
+    </dl>
+    <% if (run.previewDigest) { %>
+      <div class="field">
+        <span class="field-label">Preview approval code (SHA-256)</span>
+        <div class="code-box">
+          <code id="previewDigestValue"><%= run.previewDigest %></code>
+          <button type="button" class="button button-secondary button-sm" data-copy="#previewDigestValue" hidden><%- icon('copy') %><span data-copy-label>Copy</span></button>
+        </div>
+        <span class="field-hint">Exact length: <%= run.previewDigest.length %> hexadecimal characters</span>
+      </div>
+    <% } %>
+    <% if (run.approvalDigest) { %>
+      <div class="field">
+        <span class="field-label">Approved with code</span>
+        <div class="code-box"><code><%= run.approvalDigest %></code></div>
+        <span class="field-hint">Exact length: <%= run.approvalDigest.length %> hexadecimal characters</span>
+      </div>
+    <% } %>
+  </div>
+</details>

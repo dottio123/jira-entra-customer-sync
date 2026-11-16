@@ -1,0 +1,95 @@
+<%
+  const tz = settings.schedule_timezone;
+  const isAdmin = principal.role === 'admin';
+%>
+<header class="page-header">
+  <div>
+    <h1>Sync history <% if (settings.paused) { %><%- badge('warning', 'Paused') %><% } %></h1>
+    <p class="lead">Every preview and update, newest first. A <strong>preview</strong> only compares data; an <strong>update</strong> applies approved changes to Jira.</p>
+  </div>
+  <% if (isAdmin) { %>
+    <div class="page-actions">
+      <form method="post" action="/settings/pause">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="paused" value="<%= settings.paused ? 'false' : 'true' %>" />
+        <% if (settings.paused) { %>
+          <button class="button button-secondary" type="submit"><%- icon('play') %><span>Resume syncing</span></button>
+        <% } else { %>
+          <button class="button button-danger" type="submit" title="Stops new previews and updates. A request already sent to Jira cannot be recalled."><%- icon('pause') %><span>Pause syncing</span></button>
+        <% } %>
+      </form>
+      <form method="post" action="/runs/preview">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="button button-primary" type="submit" <%= activeLock || settings.paused ? 'disabled' : '' %> title="<%= settings.paused ? 'Resume syncing to run a preview.' : activeLock ? 'Wait for the current run to finish.' : 'Reads Jira and the directory. Nothing is changed.' %>">
+          <%- icon('refresh') %><span>Run preview</span>
+        </button>
+      </form>
+    </div>
+  <% } %>
+</header>
+
+<% if (activeLock) { %>
+  <div class="notice notice-info" role="status">
+    <%- icon('refresh') %>
+    <div class="notice-body">
+      <strong>Run #<%= activeLock.runId %> is in progress</strong>
+      <p>Other runs can start when it finishes.<% if (isAdmin) { %> <span class="code-tag" title="Lock holder">Lock: <%= activeLock.lockHolder %></span><% } %></p>
+    </div>
+    <% if (isAdmin) { %><div class="notice-actions"><a class="button button-secondary button-sm" href="/runs/<%= activeLock.runId %>">View</a></div><% } %>
+  </div>
+<% } %>
+
+<% if (runs.length === 0) { %>
+  <section class="card">
+    <div class="empty-state">
+      <%- icon('history') %>
+      <h2>No runs yet</h2>
+      <p>A preview reads your Jira customers, finds each one in your directory, and lists any details that differ. Nothing is changed until you approve.</p>
+    </div>
+  </section>
+<% } else { %>
+  <section class="card card-flush" aria-labelledby="history-title">
+    <div class="card-header">
+      <div>
+        <h2 id="history-title">All runs</h2>
+        <p>Showing the latest <%= plural(runs.length, 'run') %>. Times shown in <%= tz %>.</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table stack-table">
+        <thead>
+          <tr>
+            <th scope="col">Run</th>
+            <th scope="col">Status</th>
+            <th scope="col">Started</th>
+            <th scope="col" class="num">Duration</th>
+            <th scope="col" class="num">Customers checked</th>
+            <th scope="col" class="num">With changes</th>
+            <th scope="col" class="num">Details updated</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const r of runs) { const st = runStatus(r.status); const type = runType(r.runType); %>
+            <tr>
+              <td data-label="Run">
+                <strong><%= type.label %> #<%= r.id %></strong>
+                <span class="cell-sub"><%= triggerLabel(r.triggerSource) %></span>
+              </td>
+              <td data-label="Status"><%- badge(st.tone, st.label, st.help + ' (' + r.status + ')') %></td>
+              <td data-label="Started" class="nowrap"><%= formatDateTime(r.startedAt, tz) %></td>
+              <td data-label="Duration" class="num"><%= r.completedAt ? formatDuration(r.startedAt, r.completedAt) : 'Running…' %></td>
+              <%# Updates don't re-read the whole service desk; their preview holds this count. %>
+              <td data-label="Customers checked" class="num"><%= r.runType === 'LIVE_ROLLOUT' ? '—' : formatNumber(r.uniqueCustomers) %></td>
+              <td data-label="With changes" class="num"><%= r.runType === 'LIVE_ROLLOUT' ? '—' : formatNumber(r.proposedCustomerChanges) %></td>
+              <td data-label="Details updated" class="num"><%= r.runType === 'LIVE_ROLLOUT' ? formatNumber(r.verifiedFieldChanges) : '—' %></td>
+              <td class="num">
+                <% if (isAdmin) { %><a href="/runs/<%= r.id %>" class="button button-secondary button-sm" aria-label="View details for run #<%= r.id %>">Details</a><% } %>
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
